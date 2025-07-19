@@ -178,6 +178,9 @@ export default {
       currentIP: "127.0.0.1", // 默认本地地址
       ipSources: [], // IP来源记录
 
+      // 端口相关
+      currentPort: 2321, // 默认端口（开发环境）
+
       // 状态相关
       currentStatus: null,
       statusHistory: [],
@@ -274,7 +277,7 @@ export default {
 
     // 二维码链接
     qrCodeURL() {
-      return `http://${this.currentIP}:2321/?ip=${this.currentIP}`;
+      return `http://${this.currentIP}:${this.currentPort}/?ip=${this.currentIP}`;
     },
   },
   methods: {
@@ -282,6 +285,9 @@ export default {
     async getIPAddress() {
       this.ipSources = [];
       let finalIP = "127.0.0.1";
+
+      // 获取端口信息
+      await this.getPortInfo();
 
       // 方式1：从URL参数获取IP
       try {
@@ -350,6 +356,25 @@ export default {
       console.log("IP获取来源记录:", this.ipSources);
 
       return finalIP;
+    },
+
+    // 获取端口信息
+    async getPortInfo() {
+      try {
+        if (window.electronAPI && window.electronAPI.getPortInfo) {
+          const portInfo = await window.electronAPI.getPortInfo();
+          if (portInfo.port) {
+            this.currentPort = portInfo.port;
+            console.log("从Electron获取到端口信息:", portInfo);
+          } else if (portInfo.error) {
+            console.error("获取端口信息失败:", portInfo.error);
+          }
+        } else {
+          console.log("electronAPI.getPortInfo不可用，使用默认端口2321");
+        }
+      } catch (error) {
+        console.error("获取端口信息异常:", error);
+      }
     },
 
     // 验证IP地址格式
@@ -548,10 +573,11 @@ export default {
         clearInterval(this.workTimer);
       }
 
-      // 每秒更新一次计时
+      // 根据设备类型设置更新频率：移动端3秒，桌面端2秒（性能优化）
+      const updateInterval = this.isMobile ? 3000 : 2000;
       this.workTimer = setInterval(() => {
         this.updateWorkElapsedTime();
-      }, 1000);
+      }, updateInterval);
     },
 
     // 停止工作计时器
@@ -584,6 +610,10 @@ export default {
     // 开始心跳
     startHeartbeat() {
       this.stopHeartbeat();
+
+      // 根据设备类型设置心跳频率：移动端30秒，桌面端15秒（性能优化）
+      const heartbeatInterval = this.isMobile ? 30000 : 15000;
+
       this.heartbeatTimer = setInterval(() => {
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
           this.ws.send(
@@ -593,7 +623,7 @@ export default {
             })
           );
         }
-      }, 10000); // 10秒间隔
+      }, heartbeatInterval);
     },
 
     // 停止心跳

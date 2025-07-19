@@ -17,9 +17,11 @@
   "extraResources": [{ "from": "public/favicon.png", "to": "favicon.png" }],
   "nsis": {
     "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
+    "allowToChangeInstallationDirectory": false,
+    "perMachine": true,
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true,
-    "artifactName": "${productName}-${version}-setup.exe"
+    "artifactName": "${productName}-${version}-setup.exe",
+    "include": "installer.nsh"
   }
 }

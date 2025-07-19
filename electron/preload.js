@@ -17,4 +17,9 @@ window.electronAPI = {
   getNetworkInterfaces: () => {
     return ipcRenderer.invoke("get-network-interfaces");
   },
+
+  // 获取当前端口信息
+  getPortInfo: () => {
+    return ipcRenderer.invoke("get-port-info");
+  },
 };

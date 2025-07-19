@@ -72,6 +72,19 @@ ipcMain.handle("get-network-interfaces", async () => {
   }
 });
 
+// 添加获取当前端口信息的IPC处理器
+ipcMain.handle("get-port-info", async () => {
+  try {
+    const env = __dirname.split(path.sep).indexOf("app.asar") >= 0 ? "production" : "development";
+    const port = env === "development" ? 2321 : 2322;
+    log.info("获取端口信息:", { env, port });
+    return { env, port };
+  } catch (error) {
+    log.error("获取端口信息失败:", error);
+    return { env: "unknown", port: 2321, error: error.message };
+  }
+});
+
 // 当 Electron 完成初始化并准备创建浏览器窗口时调用此方法
 app.whenReady().then(async () => {
   // 初始化日志模块
