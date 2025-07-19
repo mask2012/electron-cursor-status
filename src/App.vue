@@ -1023,7 +1023,7 @@ export default {
 @primary-hover: #3498db;
 @text-color: #e8e9ea; // 不是纯白的浅色文字
 @text-secondary: #b0b3b8;
-@background-dark: linear-gradient(135deg, #000000 0%, #1a1a1a 50%, #000000 100%);
+@background-dark: linear-gradient(45deg, #761111 0%, #4a1f1f 25%, #1a1a1a 50%, #0f0f0f 75%, #000000 100%);
 @border-color: #3a3b3c;
 @success-color: #42a048;
 @warning-color: #faad14;
@@ -1066,7 +1066,7 @@ export default {
   margin-bottom: 20px;
   position: relative;
   z-index: 99;
-  background: #1f1f1f;
+  background: #00000057;
 
   @media (max-width: 768px) {
     .connection-status .status-text,
