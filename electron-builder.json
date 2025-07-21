@@ -14,7 +14,10 @@
     ],
     "icon": "public/favicon.png"
   },
-  "extraResources": [{ "from": "public/favicon.png", "to": "favicon.png" }],
+  "extraResources": [
+    { "from": "public/favicon.ico", "to": "favicon.ico" },
+    { "from": "public/favicon.png", "to": "favicon.png" }
+  ],
   "nsis": {
     "oneClick": false,
     "allowToChangeInstallationDirectory": false,

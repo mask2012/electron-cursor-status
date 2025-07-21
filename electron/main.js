@@ -16,44 +16,88 @@ let windowState = {
 
 // 创建系统托盘
 function createTray() {
-  // 使用favicon.ico作为托盘图标
-  const iconPath = path.join(__dirname, "../public/favicon.ico");
-  tray = new Tray(iconPath);
+  try {
+    // 获取正确的图标路径，兼容开发和生产环境
+    let iconPath;
+    const env = __dirname.split(path.sep).indexOf("app.asar") >= 0 ? "production" : "development";
 
-  // 设置托盘提示文字
-  tray.setToolTip("Cursor Status");
-
-  // 创建托盘右键菜单
-  const contextMenu = Menu.buildFromTemplate([
-    {
-      label: "显示窗口",
-      click: () => {
-        showWindow();
-      },
-    },
-    { type: "separator" },
-    {
-      label: "退出",
-      click: () => {
-        app.isQuitting = true;
-        app.quit();
-      },
-    },
-  ]);
-
-  // 设置托盘右键菜单
-  tray.setContextMenu(contextMenu);
-
-  // 托盘左键单击事件 - 切换窗口显示/隐藏
-  tray.on("click", () => {
-    if (windowState.isVisible) {
-      hideWindow();
+    if (env === "production") {
+      // 生产环境：图标应该在resources目录下
+      iconPath = path.join(process.resourcesPath, "favicon.ico");
+      // 如果上面的路径不存在，尝试备用路径
+      const fs = require("fs");
+      if (!fs.existsSync(iconPath)) {
+        iconPath = path.join(process.resourcesPath, "app.asar.unpacked", "public", "favicon.ico");
+        if (!fs.existsSync(iconPath)) {
+          // 最后备用：使用内置的默认图标
+          iconPath = path.join(__dirname, "../public/favicon.ico");
+        }
+      }
     } else {
-      showWindow();
+      // 开发环境
+      iconPath = path.join(__dirname, "../public/favicon.ico");
     }
-  });
 
-  log.info("系统托盘已创建");
+    log.info("托盘图标路径:", iconPath);
+    log.info("当前环境:", env);
+
+    // 检查图标文件是否存在
+    const fs = require("fs");
+    if (!fs.existsSync(iconPath)) {
+      log.error("托盘图标文件不存在:", iconPath);
+      // 尝试使用windows默认图标路径
+      if (process.platform === "win32") {
+        iconPath = path.join(__dirname, "../public/favicon.ico");
+        if (!fs.existsSync(iconPath)) {
+          throw new Error("找不到合适的托盘图标文件");
+        }
+      }
+    }
+
+    tray = new Tray(iconPath);
+    log.info("系统托盘图标创建成功");
+
+    // 设置托盘提示文字
+    tray.setToolTip("Cursor Status");
+
+    // 创建托盘右键菜单
+    const contextMenu = Menu.buildFromTemplate([
+      {
+        label: "显示窗口",
+        click: () => {
+          showWindow();
+        },
+      },
+      { type: "separator" },
+      {
+        label: "退出",
+        click: () => {
+          app.isQuitting = true;
+          app.quit();
+        },
+      },
+    ]);
+
+    // 设置托盘右键菜单
+    tray.setContextMenu(contextMenu);
+
+    // 托盘左键单击事件 - 切换窗口显示/隐藏
+    tray.on("click", () => {
+      if (windowState.isVisible) {
+        hideWindow();
+      } else {
+        showWindow();
+      }
+    });
+
+    log.info("系统托盘已创建");
+  } catch (error) {
+    log.error("创建系统托盘失败:", error);
+    log.error("错误详情:", error.message);
+
+    // 托盘创建失败时，确保窗口仍然可以显示
+    log.info("托盘创建失败，但应用将继续运行");
+  }
 }
 
 // 显示窗口
