@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, ipcMain, Tray, Menu } = require("electron");
 const { startStaticServer } = require("./statisServerHandler");
 const path = require("path");
 const { log, initializeLogger } = require("./log");
@@ -7,6 +7,79 @@ const { getNetworkInterfaces } = require("./util"); // 添加导入
 
 let mainWindow;
 let statusServer;
+let tray; // 系统托盘实例
+let windowState = {
+  // 窗口状态记录
+  isVisible: true,
+  bounds: null,
+};
+
+// 创建系统托盘
+function createTray() {
+  // 使用favicon.ico作为托盘图标
+  const iconPath = path.join(__dirname, "../public/favicon.ico");
+  tray = new Tray(iconPath);
+
+  // 设置托盘提示文字
+  tray.setToolTip("Cursor Status");
+
+  // 创建托盘右键菜单
+  const contextMenu = Menu.buildFromTemplate([
+    {
+      label: "显示窗口",
+      click: () => {
+        showWindow();
+      },
+    },
+    { type: "separator" },
+    {
+      label: "退出",
+      click: () => {
+        app.isQuitting = true;
+        app.quit();
+      },
+    },
+  ]);
+
+  // 设置托盘右键菜单
+  tray.setContextMenu(contextMenu);
+
+  // 托盘左键单击事件 - 切换窗口显示/隐藏
+  tray.on("click", () => {
+    if (windowState.isVisible) {
+      hideWindow();
+    } else {
+      showWindow();
+    }
+  });
+
+  log.info("系统托盘已创建");
+}
+
+// 显示窗口
+function showWindow() {
+  if (mainWindow) {
+    if (windowState.bounds) {
+      // 恢复到之前的位置和大小
+      mainWindow.setBounds(windowState.bounds);
+    }
+    mainWindow.show();
+    mainWindow.focus();
+    windowState.isVisible = true;
+    log.info("窗口已显示");
+  }
+}
+
+// 隐藏窗口
+function hideWindow() {
+  if (mainWindow) {
+    // 保存当前窗口位置和大小
+    windowState.bounds = mainWindow.getBounds();
+    mainWindow.hide();
+    windowState.isVisible = false;
+    log.info("窗口已隐藏到系统托盘");
+  }
+}
 
 function createWindow() {
   // 创建浏览器窗口
@@ -47,11 +120,17 @@ function createWindow() {
     mainWindow = null;
   });
 
+  // 当窗口最小化时，隐藏到系统托盘
+  mainWindow.on("minimize", function (event) {
+    event.preventDefault();
+    hideWindow();
+  });
+
   // 当用户尝试关闭窗口时，隐藏窗口而不是关闭
   mainWindow.on("close", function (event) {
     if (!app.isQuitting) {
       event.preventDefault();
-      mainWindow.hide();
+      hideWindow();
       return false;
     }
   });
@@ -98,6 +177,9 @@ app.whenReady().then(async () => {
   statusServer.start();
   log.info("状态服务器已启动");
 
+  // 创建系统托盘
+  createTray();
+
   createWindow();
 });
 
@@ -118,9 +200,24 @@ app.on("before-quit", async (event) => {
     try {
       await statusServer.stop();
       log.info("状态服务器已停止");
+
+      // 清理系统托盘
+      if (tray) {
+        tray.destroy();
+        tray = null;
+        log.info("系统托盘已清理");
+      }
+
       app.quit();
     } catch (error) {
       log.error("停止状态服务器时出错:", error);
+
+      // 即使出错也要清理托盘
+      if (tray) {
+        tray.destroy();
+        tray = null;
+      }
+
       app.quit();
     }
   }

@@ -1,6 +1,6 @@
 {
   "name": "cursor-status",
-  "version": "0.0.2",
+  "version": "0.0.3",
   "env": "production",
   "author": "mask",
   "description": "cursor-status",
