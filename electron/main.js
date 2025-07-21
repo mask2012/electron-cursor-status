@@ -61,10 +61,10 @@ class WorkStatsManager {
     const today = this.getTodayString();
     const todayData = this.data[today] || { count: 0, totalDuration: 0 };
 
-    // 转换总时长（秒）为 HH:MM 格式
-    const hours = Math.floor(todayData.totalDuration / 3600);
-    const minutes = Math.floor((todayData.totalDuration % 3600) / 60);
-    const durationStr = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+    // 转换总时长（秒）为 MM:SS 格式
+    const minutes = Math.floor(todayData.totalDuration / 60);
+    const seconds = todayData.totalDuration % 60;
+    const durationStr = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 
     return {
       todayCount: todayData.count,
@@ -289,27 +289,7 @@ ipcMain.handle("get-today-work-stats", async () => {
   }
 });
 
-// 添加工作完成通知的IPC处理器
-ipcMain.handle("notify-work-completed", async (event, workDuration) => {
-  try {
-    if (!workStatsManager) {
-      workStatsManager = new WorkStatsManager();
-    }
-
-    log.info("收到工作完成通知:", workDuration);
-    const updatedStats = workStatsManager.addWorkRecord(workDuration);
-
-    // 通过StatusServer广播更新给所有客户端
-    if (statusServer) {
-      statusServer.broadcastWorkStats(updatedStats);
-    }
-
-    return { success: true, stats: updatedStats };
-  } catch (error) {
-    log.error("处理工作完成通知失败:", error);
-    return { success: false, error: error.message };
-  }
-});
+// 工作完成通知现在由StatusServer统一处理，不再需要单独的IPC处理器
 
 // 当 Electron 完成初始化并准备创建浏览器窗口时调用此方法
 app.whenReady().then(async () => {
@@ -325,7 +305,7 @@ app.whenReady().then(async () => {
   log.info("静态页面服务器已启动");
 
   // 启动状态服务器
-  statusServer = new StatusServer();
+  statusServer = new StatusServer(workStatsManager);
   statusServer.start();
   log.info("状态服务器已启动");
 

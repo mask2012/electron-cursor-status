@@ -177,11 +177,8 @@
             >
               <div class="history-time">{{ formatTime(item.timestamp) }}</div>
               <div class="history-status">
-                <span v-if="item.isCompleted" class="status-text">{{ getStatusText(item.status) }}</span>
-                <span v-else>{{ item.status }}</span>
-                <span v-if="item.isCompleted && getDuration(item.status)" class="duration-highlight">
-                  {{ getDuration(item.status) }}
-                </span>
+                <span class="status-text">{{ item.status }}</span>
+                <span v-if="item.isCompleted && item.duration" class="duration-highlight"> 耗时 {{ item.duration }} </span>
               </div>
             </div>
           </div>
@@ -224,14 +221,12 @@ export default {
       isWorkCompleted: false,
       statusTransitionTimer: null,
 
-      // 计时器相关
-      workStartTime: null, // 工作开始时间
-      workElapsedTime: "00:00", // 已工作时间
-      workTimer: null, // 工作计时器
+      // 工作时长相关（从服务端接收）
+      workElapsedTime: "00:00", // 当前工作时长（服务端下发）
+      finalWorkDuration: null, // 最终工作时长
 
       // 工作状态显示控制
       isWorkStatusHidden: false, // 是否隐藏工作状态窗口
-      finalWorkDuration: null, // 最终工作时长
 
       // 二维码相关
       qrCodeVisible: false,
@@ -510,6 +505,10 @@ export default {
           this.handleWorkStatsUpdate(data.data);
           break;
 
+        case "work_timer_update":
+          this.handleWorkTimerUpdate(data.data);
+          break;
+
         case "pong":
           // 心跳响应，不需要特殊处理
           break;
@@ -525,19 +524,9 @@ export default {
 
       this.currentStatus = status;
 
-      // 如果是工作结束状态，添加耗时信息
-      let displayStatus = status;
-      if (status.includes("工作结束") && this.workStartTime) {
-        // 计算工作耗时
-        const workEndTime = new Date();
-        const elapsedMs = workEndTime.getTime() - this.workStartTime.getTime();
-        const elapsedSeconds = Math.floor(elapsedMs / 1000);
-        const minutes = Math.floor(elapsedSeconds / 60);
-        const seconds = elapsedSeconds % 60;
-        const duration = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
-
-        displayStatus = `${status} 耗时 ${duration}`;
-      }
+      // 直接使用原始状态，不再在客户端计算耗时
+      // 耗时信息将通过work_timer_update消息单独处理
+      const displayStatus = status;
 
       // 添加到历史记录
       const historyItem = {
@@ -545,6 +534,7 @@ export default {
         timestamp: timestamp || new Date().toISOString(),
         isWorking: status.includes("工作中"),
         isCompleted: status.includes("工作结束"),
+        duration: null, // 新增耗时字段
       };
 
       this.statusHistory.unshift(historyItem);
@@ -569,23 +559,13 @@ export default {
         this.isWorkCompleted = false;
         this.isWorkStatusHidden = false; // 重新显示工作状态窗口
         this.finalWorkDuration = null; // 清除之前的工作时长
-        this.startWorkTimer(); // 开始计时
 
         // 播放工作音乐
         this.playWorkingMusic();
       } else if (status.includes("工作结束")) {
-        // 保存最终工作时长
-        this.finalWorkDuration = this.workElapsedTime;
-        this.stopWorkTimer(); // 停止计时
-
         // 停止工作音乐并播放完成提示音
         this.stopWorkingMusic();
         this.playCompletionSound();
-
-        // 只有Electron内部客户端才发送工作完成通知
-        if (!this.isMobile) {
-          this.notifyWorkCompleted(this.workElapsedTime);
-        }
 
         // 如果从工作中切换到工作结束，需要流畅过渡
         if (this.isWorking) {
@@ -602,55 +582,56 @@ export default {
       } else {
         this.isWorking = false;
         this.isWorkCompleted = false;
-        this.stopWorkTimer(); // 停止计时
 
         // 停止工作音乐
         this.stopWorkingMusic();
       }
     },
 
-    // 开始工作计时器
-    startWorkTimer() {
-      this.workStartTime = new Date();
-      this.updateWorkElapsedTime();
+    // 处理服务端工作时长更新
+    handleWorkTimerUpdate(data) {
+      console.log("收到服务端工作时长更新:", data);
 
-      // 清除之前的计时器
-      if (this.workTimer) {
-        clearInterval(this.workTimer);
+      // 更新工作时长显示
+      this.workElapsedTime = data.elapsedTime;
+
+      if (data.isCompleted) {
+        // 工作完成，保存最终工作时长
+        this.finalWorkDuration = data.elapsedTime;
+        console.log("工作完成，最终时长:", this.finalWorkDuration);
+
+        // 更新历史记录中的最新项，直接设置耗时字段
+        console.log("当前历史记录数量:", this.statusHistory.length);
+        if (this.statusHistory.length > 0) {
+          const latestItem = this.statusHistory[0];
+          console.log("最新历史记录项:", latestItem);
+          console.log("最新项 isCompleted:", latestItem.isCompleted);
+
+          if (latestItem.isCompleted) {
+            latestItem.duration = data.elapsedTime;
+            console.log("已更新历史记录耗时:", latestItem);
+          } else {
+            console.log("最新项不是已完成状态，无法设置耗时");
+            // 尝试延迟执行，可能是竞态条件
+            setTimeout(() => {
+              if (this.statusHistory.length > 0) {
+                const retryItem = this.statusHistory[0];
+                console.log("延迟重试 - 最新历史记录项:", retryItem);
+                if (retryItem.isCompleted) {
+                  retryItem.duration = data.elapsedTime;
+                  console.log("延迟重试成功 - 已更新历史记录耗时:", retryItem);
+                } else {
+                  console.log("延迟重试失败 - 最新项仍不是已完成状态");
+                }
+              }
+            }, 100);
+          }
+        } else {
+          console.log("历史记录为空，无法设置耗时");
+        }
+      } else {
+        console.log("工作未完成，跳过耗时设置");
       }
-
-      // 根据设备类型设置更新频率：移动端3秒，桌面端2秒（性能优化）
-      const updateInterval = this.isMobile ? 3000 : 2000;
-      this.workTimer = setInterval(() => {
-        this.updateWorkElapsedTime();
-      }, updateInterval);
-    },
-
-    // 停止工作计时器
-    stopWorkTimer() {
-      if (this.workTimer) {
-        clearInterval(this.workTimer);
-        this.workTimer = null;
-      }
-      this.workStartTime = null;
-      this.workElapsedTime = "00:00";
-    },
-
-    // 更新工作已用时间
-    updateWorkElapsedTime() {
-      if (!this.workStartTime) {
-        this.workElapsedTime = "00:00";
-        return;
-      }
-
-      const now = new Date();
-      const elapsedMs = now.getTime() - this.workStartTime.getTime();
-      const elapsedSeconds = Math.floor(elapsedMs / 1000);
-
-      const minutes = Math.floor(elapsedSeconds / 60);
-      const seconds = elapsedSeconds % 60;
-
-      this.workElapsedTime = `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
     },
 
     // 开始心跳
@@ -1010,55 +991,11 @@ export default {
       }
     },
 
-    // 获取状态文本（不包含耗时）
-    getStatusText(fullStatus) {
-      const duractionMatch = fullStatus.match(/^(.+?)\s+耗时\s+\d+:\d+$/);
-      if (duractionMatch) {
-        return duractionMatch[1];
-      }
-      return fullStatus;
-    },
-
-    // 提取耗时信息
-    getDuration(fullStatus) {
-      const durationMatch = fullStatus.match(/耗时\s+(\d+:\d+)/);
-      if (durationMatch) {
-        return `耗时 ${durationMatch[1]}`;
-      }
-      return null;
-    },
-
     // 处理工作统计更新
     handleWorkStatsUpdate(data) {
       console.log("收到工作统计更新:", data);
       this.todayWorkCount = data.todayCount || 0;
       this.todayWorkDuration = data.todayDuration || "00:00";
-    },
-
-    // 通知工作完成（仅Electron内部客户端）
-    async notifyWorkCompleted(workDuration) {
-      try {
-        if (window.electronAPI && window.electronAPI.notifyWorkCompleted) {
-          await window.electronAPI.notifyWorkCompleted(workDuration);
-          console.log("工作完成通知已发送:", workDuration);
-        }
-      } catch (error) {
-        console.error("发送工作完成通知失败:", error);
-      }
-    },
-
-    // 获取今日工作统计
-    async getTodayWorkStats() {
-      try {
-        if (window.electronAPI && window.electronAPI.getTodayWorkStats) {
-          const stats = await window.electronAPI.getTodayWorkStats();
-          console.log("获取今日工作统计:", stats);
-          this.todayWorkCount = stats.todayCount || 0;
-          this.todayWorkDuration = stats.todayDuration || "00:00";
-        }
-      } catch (error) {
-        console.error("获取今日工作统计失败:", error);
-      }
     },
   },
   mounted() {
@@ -1075,10 +1012,7 @@ export default {
     // 加载音乐设置（传入设备类型）
     this.loadMusicSettings();
 
-    // 只有Electron内部客户端才获取今日工作统计
-    if (!this.isMobile) {
-      this.getTodayWorkStats();
-    }
+    // 工作统计数据将通过WebSocket消息获取，不再依赖IPC
 
     // 初始化 WebSocket 连接
     this.initWebSocket();
@@ -1108,9 +1042,6 @@ export default {
     if (this.statusTransitionTimer) {
       clearTimeout(this.statusTransitionTimer);
     }
-
-    // 清理工作计时器
-    this.stopWorkTimer();
 
     // 清理音乐资源
     this.stopWorkingMusic();
