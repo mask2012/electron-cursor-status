@@ -71,8 +71,17 @@
       </div>
     </div>
 
-    <!-- 音频解锁提示 -->
-    <!-- 移除整个音频解锁提示区域 -->
+    <!-- 今日工作统计 -->
+    <div class="work-stats">
+      <div class="stats-item">
+        <div class="stats-label">今日工作次数</div>
+        <div class="stats-value">{{ todayWorkCount }}次</div>
+      </div>
+      <div class="stats-item">
+        <div class="stats-label">今日工作时长</div>
+        <div class="stats-value">{{ todayWorkDuration }}</div>
+      </div>
+    </div>
 
     <!-- 隐藏的音频元素 -->
     <audio ref="workingAudio" loop preload="auto">
@@ -113,9 +122,33 @@
           <div class="animation-section">
             <!-- 工作中动画 -->
             <div v-if="isWorking" class="work-animation">
-              <div class="loading-spinner">
-                <div class="spinner-circle"></div>
-              </div>
+              <svg width="120" height="120" viewBox="0 0 100 100">
+                <text x="10" y="0" fill="#60A5FA" font-size="12" font-family="monospace">
+                  0
+                  <animate attributeName="y" values="-20;120" dur="1s" repeatCount="indefinite"></animate>
+                  <animate attributeName="opacity" values="0;1;0" dur="1s" repeatCount="indefinite"></animate>
+                </text>
+                <text x="36" y="0" fill="#60A5FA" font-size="12" font-family="monospace">
+                  0
+                  <animate attributeName="y" values="-20;120" dur="1.5s" repeatCount="indefinite"></animate>
+                  <animate attributeName="opacity" values="0;1;0" dur="1.5s" repeatCount="indefinite"></animate>
+                </text>
+                <text x="52" y="0" fill="#60A5FA" font-size="12" font-family="monospace">
+                  1
+                  <animate attributeName="y" values="-20;120" dur="2s" repeatCount="indefinite"></animate>
+                  <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite"></animate>
+                </text>
+                <text x="68" y="0" fill="#60A5FA" font-size="12" font-family="monospace">
+                  0
+                  <animate attributeName="y" values="-20;120" dur="2.5s" repeatCount="indefinite"></animate>
+                  <animate attributeName="opacity" values="0;1;0" dur="2.5s" repeatCount="indefinite"></animate>
+                </text>
+                <text x="82" y="0" fill="#60A5FA" font-size="12" font-family="monospace">
+                  0
+                  <animate attributeName="y" values="-20;120" dur="3s" repeatCount="indefinite"></animate>
+                  <animate attributeName="opacity" values="0;1;0" dur="3s" repeatCount="indefinite"></animate>
+                </text>
+              </svg>
             </div>
 
             <!-- 工作结束动画 -->
@@ -217,6 +250,10 @@ export default {
       workingMusicPlaying: false, // 工作音乐播放状态
       completionSoundPlaying: false, // 完成提示音播放状态
       workingMusicPreviewTimer: null, // 工作音乐预览定时器
+
+      // 今日工作统计
+      todayWorkCount: 0,
+      todayWorkDuration: "00:00",
     };
   },
   computed: {
@@ -469,6 +506,10 @@ export default {
           this.handleStatusUpdate(data.status, data.timestamp);
           break;
 
+        case "work_stats_update":
+          this.handleWorkStatsUpdate(data.data);
+          break;
+
         case "pong":
           // 心跳响应，不需要特殊处理
           break;
@@ -540,6 +581,11 @@ export default {
         // 停止工作音乐并播放完成提示音
         this.stopWorkingMusic();
         this.playCompletionSound();
+
+        // 只有Electron内部客户端才发送工作完成通知
+        if (!this.isMobile) {
+          this.notifyWorkCompleted(this.workElapsedTime);
+        }
 
         // 如果从工作中切换到工作结束，需要流畅过渡
         if (this.isWorking) {
@@ -981,6 +1027,39 @@ export default {
       }
       return null;
     },
+
+    // 处理工作统计更新
+    handleWorkStatsUpdate(data) {
+      console.log("收到工作统计更新:", data);
+      this.todayWorkCount = data.todayCount || 0;
+      this.todayWorkDuration = data.todayDuration || "00:00";
+    },
+
+    // 通知工作完成（仅Electron内部客户端）
+    async notifyWorkCompleted(workDuration) {
+      try {
+        if (window.electronAPI && window.electronAPI.notifyWorkCompleted) {
+          await window.electronAPI.notifyWorkCompleted(workDuration);
+          console.log("工作完成通知已发送:", workDuration);
+        }
+      } catch (error) {
+        console.error("发送工作完成通知失败:", error);
+      }
+    },
+
+    // 获取今日工作统计
+    async getTodayWorkStats() {
+      try {
+        if (window.electronAPI && window.electronAPI.getTodayWorkStats) {
+          const stats = await window.electronAPI.getTodayWorkStats();
+          console.log("获取今日工作统计:", stats);
+          this.todayWorkCount = stats.todayCount || 0;
+          this.todayWorkDuration = stats.todayDuration || "00:00";
+        }
+      } catch (error) {
+        console.error("获取今日工作统计失败:", error);
+      }
+    },
   },
   mounted() {
     // 设置文档标题
@@ -995,6 +1074,11 @@ export default {
 
     // 加载音乐设置（传入设备类型）
     this.loadMusicSettings();
+
+    // 只有Electron内部客户端才获取今日工作统计
+    if (!this.isMobile) {
+      this.getTodayWorkStats();
+    }
 
     // 初始化 WebSocket 连接
     this.initWebSocket();
@@ -1338,6 +1422,67 @@ export default {
   }
 }
 
+// 今日工作统计
+.work-stats {
+  display: flex;
+  justify-content: space-around;
+  margin: 20px auto 0;
+  padding: 15px 20px;
+  max-width: 350px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 15px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  color: @text-color;
+  font-size: 16px;
+  font-weight: 600;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  letter-spacing: 0.5px;
+
+  .stats-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 5px;
+    flex: 1;
+
+    .stats-label {
+      font-size: 14px;
+      color: @text-secondary;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      text-align: center;
+      white-space: nowrap;
+    }
+
+    .stats-value {
+      font-size: 24px;
+      color: @primary-color;
+      font-family: "Courier New", monospace;
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.5);
+      letter-spacing: 1px;
+      font-weight: bold;
+    }
+  }
+
+  @media (max-width: 768px) {
+    margin: 15px auto 0;
+    padding: 12px 15px;
+    gap: 10px;
+
+    .stats-item {
+      .stats-label {
+        font-size: 12px;
+      }
+
+      .stats-value {
+        font-size: 20px;
+      }
+    }
+  }
+}
+
 // 工作状态容器
 .work-status-container {
   position: fixed;
@@ -1537,53 +1682,6 @@ export default {
   // 工作中动画
   .work-animation {
     position: relative;
-
-    .loading-spinner {
-      position: relative;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      .spinner-circle {
-        width: 80px;
-        height: 80px;
-        border: 6px solid rgba(255, 255, 255, 0.05);
-        border-top: 6px solid @working-color;
-        border-right: 6px solid rgba(93, 173, 226, 0.7);
-        border-bottom: 6px solid rgba(93, 173, 226, 0.3);
-        border-radius: 50%;
-        animation: spinGlow 1.5s ease-in-out infinite;
-        box-shadow: 0 0 30px rgba(49, 130, 206, 0.5), inset 0 0 30px rgba(49, 130, 206, 0.2), 0 0 60px rgba(49, 130, 206, 0.3);
-        position: relative;
-      }
-
-      // 内层小圆圈
-      &::before {
-        content: "";
-        position: absolute;
-        width: 50px;
-        height: 50px;
-        border: 4px solid transparent;
-        border-top: 4px solid rgba(255, 255, 255, 0.8);
-        border-right: 4px solid rgba(255, 255, 255, 0.5);
-        border-radius: 50%;
-        animation: spinCounterGlow 1s linear infinite reverse;
-        box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
-      }
-
-      // 外层光环
-      &::after {
-        content: "";
-        position: absolute;
-        width: 120px;
-        height: 120px;
-        border: 2px solid transparent;
-        border-top: 2px solid rgba(93, 173, 226, 0.2);
-        border-radius: 50%;
-        animation: spinSlow 3s linear infinite;
-        box-shadow: 0 0 40px rgba(93, 173, 226, 0.1);
-      }
-    }
   }
 
   // 工作完成动画
@@ -1737,6 +1835,30 @@ export default {
   }
   100% {
     transform: rotate(360deg);
+  }
+}
+
+@keyframes svgRotateAndBreath {
+  0% {
+    transform: rotate(0deg) scale(1);
+  }
+  16.67% {
+    transform: rotate(60deg) scale(1.1);
+  }
+  33.33% {
+    transform: rotate(120deg) scale(1);
+  }
+  50% {
+    transform: rotate(180deg) scale(1.1);
+  }
+  66.67% {
+    transform: rotate(240deg) scale(1);
+  }
+  83.33% {
+    transform: rotate(300deg) scale(1.1);
+  }
+  100% {
+    transform: rotate(360deg) scale(1);
   }
 }
 

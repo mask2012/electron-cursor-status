@@ -22,4 +22,14 @@ window.electronAPI = {
   getPortInfo: () => {
     return ipcRenderer.invoke("get-port-info");
   },
+
+  // 获取今日工作统计
+  getTodayWorkStats: () => {
+    return ipcRenderer.invoke("get-today-work-stats");
+  },
+
+  // 通知工作完成
+  notifyWorkCompleted: (workDuration) => {
+    return ipcRenderer.invoke("notify-work-completed", workDuration);
+  },
 };

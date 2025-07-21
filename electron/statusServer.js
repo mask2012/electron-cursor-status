@@ -180,6 +180,18 @@ class StatusServer {
     log.info(`消息广播完成: 成功 ${successCount}, 失败 ${failCount}`);
   }
 
+  // 广播工作统计更新
+  broadcastWorkStats(stats) {
+    const message = {
+      type: "work_stats_update",
+      data: stats,
+      timestamp: new Date().toISOString(),
+    };
+
+    log.info("广播工作统计更新:", stats);
+    this.broadcastToClients(message);
+  }
+
   // 停止服务
   stop() {
     return new Promise((resolve) => {

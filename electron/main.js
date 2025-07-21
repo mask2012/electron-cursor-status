@@ -1,6 +1,7 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu } = require("electron");
-const { startStaticServer, stopStaticServer } = require("./statisServerHandler");
+const { startStaticServer } = require("./statisServerHandler");
 const path = require("path");
+const fs = require("fs");
 const { log, initializeLogger } = require("./log");
 const { StatusServer } = require("./statusServer");
 const { getNetworkInterfaces } = require("./util"); // 添加导入
@@ -14,6 +15,95 @@ let windowState = {
   bounds: null,
 };
 
+// 工作统计数据文件路径
+const workStatsPath = path.join(app.getPath("userData"), "work-stats.json");
+
+// 工作统计数据管理
+class WorkStatsManager {
+  constructor() {
+    this.data = this.loadData();
+  }
+
+  // 加载数据
+  loadData() {
+    try {
+      if (fs.existsSync(workStatsPath)) {
+        const data = JSON.parse(fs.readFileSync(workStatsPath, "utf8"));
+        log.info("工作统计数据加载成功:", data);
+        return data;
+      }
+    } catch (error) {
+      log.error("加载工作统计数据失败:", error);
+    }
+    return {};
+  }
+
+  // 保存数据
+  saveData() {
+    try {
+      fs.writeFileSync(workStatsPath, JSON.stringify(this.data, null, 2), "utf8");
+      log.info("工作统计数据保存成功");
+    } catch (error) {
+      log.error("保存工作统计数据失败:", error);
+    }
+  }
+
+  // 获取今日日期字符串
+  getTodayString() {
+    const today = new Date();
+    return (
+      today.getFullYear() + "-" + String(today.getMonth() + 1).padStart(2, "0") + "-" + String(today.getDate()).padStart(2, "0")
+    );
+  }
+
+  // 获取今日统计
+  getTodayStats() {
+    const today = this.getTodayString();
+    const todayData = this.data[today] || { count: 0, totalDuration: 0 };
+
+    // 转换总时长（秒）为 HH:MM 格式
+    const hours = Math.floor(todayData.totalDuration / 3600);
+    const minutes = Math.floor((todayData.totalDuration % 3600) / 60);
+    const durationStr = `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}`;
+
+    return {
+      todayCount: todayData.count,
+      todayDuration: durationStr,
+      date: today,
+    };
+  }
+
+  // 添加工作记录
+  addWorkRecord(durationStr) {
+    const today = this.getTodayString();
+
+    // 解析时长字符串 (MM:SS) 为秒数
+    const [minutes, seconds] = durationStr.split(":").map(Number);
+    const durationInSeconds = minutes * 60 + seconds;
+
+    // 初始化今日数据
+    if (!this.data[today]) {
+      this.data[today] = { count: 0, totalDuration: 0 };
+    }
+
+    // 更新统计
+    this.data[today].count += 1;
+    this.data[today].totalDuration += durationInSeconds;
+
+    // 保存数据
+    this.saveData();
+
+    log.info(
+      `新增工作记录: 时长 ${durationStr}, 今日总计: ${this.data[today].count} 次, 总时长: ${this.data[today].totalDuration} 秒`
+    );
+
+    return this.getTodayStats();
+  }
+}
+
+// 初始化工作统计管理器
+let workStatsManager;
+
 // 创建系统托盘
 function createTray() {
   try {
@@ -24,34 +114,9 @@ function createTray() {
     if (env === "production") {
       // 生产环境：图标应该在resources目录下
       iconPath = path.join(process.resourcesPath, "favicon.ico");
-      // 如果上面的路径不存在，尝试备用路径
-      const fs = require("fs");
-      if (!fs.existsSync(iconPath)) {
-        iconPath = path.join(process.resourcesPath, "app.asar.unpacked", "public", "favicon.ico");
-        if (!fs.existsSync(iconPath)) {
-          // 最后备用：使用内置的默认图标
-          iconPath = path.join(__dirname, "../public/favicon.ico");
-        }
-      }
     } else {
       // 开发环境
-      iconPath = path.join(__dirname, "../public/favicon.ico");
-    }
-
-    log.info("托盘图标路径:", iconPath);
-    log.info("当前环境:", env);
-
-    // 检查图标文件是否存在
-    const fs = require("fs");
-    if (!fs.existsSync(iconPath)) {
-      log.error("托盘图标文件不存在:", iconPath);
-      // 尝试使用windows默认图标路径
-      if (process.platform === "win32") {
-        iconPath = path.join(__dirname, "../public/favicon.ico");
-        if (!fs.existsSync(iconPath)) {
-          throw new Error("找不到合适的托盘图标文件");
-        }
-      }
+      iconPath = path.join(__dirname, "../resources/favicon.ico");
     }
 
     tray = new Tray(iconPath);
@@ -150,9 +215,9 @@ function createWindow() {
   log.info(__dirname);
   const env = __dirname.split(path.sep).indexOf("app.asar") >= 0 ? "production" : "development";
   if (env === "development") {
-    localLink = "http://localhost:2321/";
+    localLink = "http://127.0.0.1:2321/";
   } else {
-    localLink = "http://localhost:2322/";
+    localLink = "http://127.0.0.1:2322/";
   }
   mainWindow.loadURL(localLink);
 
@@ -209,10 +274,51 @@ ipcMain.handle("get-port-info", async () => {
   }
 });
 
+// 添加获取今日工作统计的IPC处理器
+ipcMain.handle("get-today-work-stats", async () => {
+  try {
+    if (!workStatsManager) {
+      workStatsManager = new WorkStatsManager();
+    }
+    const stats = workStatsManager.getTodayStats();
+    log.info("获取今日工作统计:", stats);
+    return stats;
+  } catch (error) {
+    log.error("获取今日工作统计失败:", error);
+    return { todayCount: 0, todayDuration: "00:00", error: error.message };
+  }
+});
+
+// 添加工作完成通知的IPC处理器
+ipcMain.handle("notify-work-completed", async (event, workDuration) => {
+  try {
+    if (!workStatsManager) {
+      workStatsManager = new WorkStatsManager();
+    }
+
+    log.info("收到工作完成通知:", workDuration);
+    const updatedStats = workStatsManager.addWorkRecord(workDuration);
+
+    // 通过StatusServer广播更新给所有客户端
+    if (statusServer) {
+      statusServer.broadcastWorkStats(updatedStats);
+    }
+
+    return { success: true, stats: updatedStats };
+  } catch (error) {
+    log.error("处理工作完成通知失败:", error);
+    return { success: false, error: error.message };
+  }
+});
+
 // 当 Electron 完成初始化并准备创建浏览器窗口时调用此方法
 app.whenReady().then(async () => {
   // 初始化日志模块
   initializeLogger();
+
+  // 初始化工作统计管理器
+  workStatsManager = new WorkStatsManager();
+  log.info("工作统计管理器已初始化");
 
   //开启静态页面服务器
   await startStaticServer();
@@ -252,10 +358,6 @@ app.on("before-quit", async (event) => {
       await statusServer.stop();
       log.info("状态服务器已停止");
     }
-
-    // 停止静态服务器
-    await stopStaticServer();
-    log.info("静态页面服务器已停止");
 
     // 清理系统托盘
     if (tray) {
