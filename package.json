@@ -10,7 +10,8 @@
     "serve": "vue-cli-service serve",
     "build": "vue-cli-service build",
     "lint": "vue-cli-service lint",
-    "electron:build": "vue-cli-service build && electron-builder --win",
+    "electron:build-with-unpacked": "vue-cli-service build && electron-builder",
+    "electron:build-without-unpacked": "vue-cli-service build && electron-builder && rimraf dist/win-unpacked",
     "electron:build:debug": "vue-cli-service build && electron-builder --win --dir",
     "start": "electron ."
   },
