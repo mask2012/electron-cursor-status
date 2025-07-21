@@ -4,6 +4,9 @@ const path = require("path");
 const server = express();
 const distPath = path.join(__dirname, "../dist");
 
+// 存储服务器实例
+let staticServerInstance = null;
+
 // 静态文件服务
 server.use(express.static(distPath));
 
@@ -23,10 +26,10 @@ function startStaticServer() {
     if (!fs.existsSync(distPath)) {
       console.error(`错误: dist目录不存在: ${distPath}`);
       console.error("请先运行 'npm run build' 构建Vue项目");
-      return;
+      return null;
     }
 
-    server.listen(port, (err) => {
+    staticServerInstance = server.listen(port, (err) => {
       if (err) {
         console.error(`静态服务器启动失败:`, err);
         return;
@@ -39,14 +42,37 @@ function startStaticServer() {
     });
 
     // 错误处理
-    server.on("error", (err) => {
+    staticServerInstance.on("error", (err) => {
       console.error("静态服务器错误:", err);
     });
+
+    return staticServerInstance;
   } catch (error) {
     console.error("启动静态服务器时出错:", error);
+    return null;
   }
+}
+
+function stopStaticServer() {
+  return new Promise((resolve) => {
+    if (staticServerInstance) {
+      console.log("正在关闭静态服务器...");
+      staticServerInstance.close((error) => {
+        if (error) {
+          console.error("关闭静态服务器时出错:", error);
+        } else {
+          console.log("静态服务器已关闭");
+        }
+        staticServerInstance = null;
+        resolve();
+      });
+    } else {
+      resolve();
+    }
+  });
 }
 
 module.exports = {
   startStaticServer,
+  stopStaticServer,
 };

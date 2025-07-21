@@ -1,5 +1,5 @@
 const { app, BrowserWindow, ipcMain, Tray, Menu } = require("electron");
-const { startStaticServer } = require("./statisServerHandler");
+const { startStaticServer, stopStaticServer } = require("./statisServerHandler");
 const path = require("path");
 const { log, initializeLogger } = require("./log");
 const { StatusServer } = require("./statusServer");
@@ -72,6 +72,7 @@ function createTray() {
       {
         label: "退出",
         click: () => {
+          log.info("用户从托盘菜单选择退出");
           app.isQuitting = true;
           app.quit();
         },
@@ -214,7 +215,8 @@ app.whenReady().then(async () => {
   initializeLogger();
 
   //开启静态页面服务器
-  startStaticServer();
+  await startStaticServer();
+  log.info("静态页面服务器已启动");
 
   // 启动状态服务器
   statusServer = new StatusServer();
@@ -239,31 +241,42 @@ app.on("window-all-closed", () => {
 
 // 应用退出前清理
 app.on("before-quit", async (event) => {
-  if (statusServer) {
-    event.preventDefault();
-    try {
+  // 防止默认退出行为，执行自定义清理
+  event.preventDefault();
+
+  log.info("开始应用退出清理...");
+
+  try {
+    // 停止状态服务器
+    if (statusServer) {
       await statusServer.stop();
       log.info("状态服务器已停止");
-
-      // 清理系统托盘
-      if (tray) {
-        tray.destroy();
-        tray = null;
-        log.info("系统托盘已清理");
-      }
-
-      app.quit();
-    } catch (error) {
-      log.error("停止状态服务器时出错:", error);
-
-      // 即使出错也要清理托盘
-      if (tray) {
-        tray.destroy();
-        tray = null;
-      }
-
-      app.quit();
     }
+
+    // 停止静态服务器
+    await stopStaticServer();
+    log.info("静态页面服务器已停止");
+
+    // 清理系统托盘
+    if (tray) {
+      tray.destroy();
+      tray = null;
+      log.info("系统托盘已清理");
+    }
+
+    log.info("应用清理完成，正在退出...");
+    app.exit(0); // 强制退出
+  } catch (error) {
+    log.error("应用退出清理时出错:", error);
+
+    // 即使出错也要清理托盘
+    if (tray) {
+      tray.destroy();
+      tray = null;
+    }
+
+    log.error("清理出错，强制退出");
+    app.exit(1); // 强制退出，带错误码
   }
 });
 

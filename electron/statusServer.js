@@ -185,30 +185,71 @@ class StatusServer {
     return new Promise((resolve) => {
       log.info("正在停止状态服务器...");
 
+      let pendingClosures = 0;
+      let hasResolved = false;
+
+      const attemptResolve = () => {
+        if (pendingClosures === 0 && !hasResolved) {
+          hasResolved = true;
+          log.info("状态服务器完全停止");
+          resolve();
+        }
+      };
+
       // 关闭所有WebSocket连接
       this.clients.forEach((client) => {
         if (client.readyState === WebSocket.OPEN) {
-          client.close();
+          try {
+            client.close();
+          } catch (error) {
+            log.error("关闭WebSocket客户端时出错:", error);
+          }
         }
       });
       this.clients.clear();
 
       // 关闭WebSocket服务器
       if (this.wsServer) {
-        this.wsServer.close(() => {
-          log.info("WebSocket服务器已关闭");
+        pendingClosures++;
+        this.wsServer.close((error) => {
+          if (error) {
+            log.error("关闭WebSocket服务器时出错:", error);
+          } else {
+            log.info("WebSocket服务器已关闭");
+          }
+          pendingClosures--;
+          attemptResolve();
         });
       }
 
       // 关闭HTTP服务器
       if (this.httpServer) {
-        this.httpServer.close(() => {
-          log.info("HTTP服务器已关闭");
-          resolve();
+        pendingClosures++;
+        this.httpServer.close((error) => {
+          if (error) {
+            log.error("关闭HTTP服务器时出错:", error);
+          } else {
+            log.info("HTTP服务器已关闭");
+          }
+          pendingClosures--;
+          attemptResolve();
         });
-      } else {
+      }
+
+      // 如果没有需要关闭的服务器，直接解析
+      if (pendingClosures === 0) {
+        hasResolved = true;
         resolve();
       }
+
+      // 设置超时，防止永远等待
+      setTimeout(() => {
+        if (!hasResolved) {
+          hasResolved = true;
+          log.warn("停止服务器超时，强制退出");
+          resolve();
+        }
+      }, 5000); // 5秒超时
     });
   }
 }
