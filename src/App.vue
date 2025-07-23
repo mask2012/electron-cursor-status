@@ -246,6 +246,9 @@ export default {
       completionSoundPlaying: false, // 完成提示音播放状态
       workingMusicPreviewTimer: null, // 工作音乐预览定时器
 
+      // 自动关闭定时器
+      autoCloseTimer: null, // 工作完成弹框自动关闭定时器
+
       // 今日工作统计
       todayWorkCount: 0,
       todayWorkDuration: "00:00",
@@ -287,9 +290,9 @@ export default {
     statusTitle() {
       if (!this.currentStatus) return "";
 
-      if (this.currentStatus.includes("工作中")) {
+      if (this.isWorking) {
         return "工作中";
-      } else if (this.currentStatus.includes("工作结束")) {
+      } else if (this.isWorkCompleted) {
         return "工作结束";
       }
       return "状态更新";
@@ -498,7 +501,7 @@ export default {
           break;
 
         case "status_update":
-          this.handleStatusUpdate(data.status, data.timestamp);
+          this.handleStatusUpdate(data.status, data.timestamp, data.isWorking, data.isCompleted);
           break;
 
         case "work_stats_update":
@@ -519,8 +522,8 @@ export default {
     },
 
     // 处理状态更新
-    handleStatusUpdate(status, timestamp) {
-      console.log("状态更新:", status);
+    handleStatusUpdate(status, timestamp, isWorking, isCompleted) {
+      console.log("状态更新:", status, "工作中:", isWorking, "已完成:", isCompleted);
 
       this.currentStatus = status;
 
@@ -528,12 +531,12 @@ export default {
       // 耗时信息将通过work_timer_update消息单独处理
       const displayStatus = status;
 
-      // 添加到历史记录
+      // 添加到历史记录，使用服务端判断的状态
       const historyItem = {
         status: displayStatus,
         timestamp: timestamp || new Date().toISOString(),
-        isWorking: status.includes("工作中"),
-        isCompleted: status.includes("工作结束"),
+        isWorking: isWorking,
+        isCompleted: isCompleted,
         duration: null, // 新增耗时字段
       };
 
@@ -542,18 +545,24 @@ export default {
         this.statusHistory.splice(this.maxHistoryItems);
       }
 
-      // 更新动画状态
-      this.updateWorkingState(status);
+      // 更新动画状态，传递服务端判断的状态
+      this.updateWorkingState(status, isWorking, isCompleted);
     },
 
     // 更新工作状态动画
-    updateWorkingState(status) {
+    updateWorkingState(status, isWorking, isCompleted) {
       // 清除之前的定时器
       if (this.statusTransitionTimer) {
         clearTimeout(this.statusTransitionTimer);
       }
 
-      if (status.includes("工作中")) {
+      // 清除自动关闭定时器
+      if (this.autoCloseTimer) {
+        clearTimeout(this.autoCloseTimer);
+        this.autoCloseTimer = null;
+      }
+
+      if (isWorking) {
         // 开始新工作时重置状态
         this.isWorking = true;
         this.isWorkCompleted = false;
@@ -562,7 +571,7 @@ export default {
 
         // 播放工作音乐
         this.playWorkingMusic();
-      } else if (status.includes("工作结束")) {
+      } else if (isCompleted) {
         // 停止工作音乐并播放完成提示音
         this.stopWorkingMusic();
         this.playCompletionSound();
@@ -573,12 +582,15 @@ export default {
           this.statusTransitionTimer = setTimeout(() => {
             this.isWorking = false;
             this.isWorkCompleted = true;
+            // 工作完成后启动10秒自动关闭定时器
+            this.startAutoCloseTimer();
           }, 500);
         } else {
           this.isWorking = false;
           this.isWorkCompleted = true;
+          // 工作完成后启动10秒自动关闭定时器
+          this.startAutoCloseTimer();
         }
-        // 注意：不再自动隐藏，用户需要手动关闭
       } else {
         this.isWorking = false;
         this.isWorkCompleted = false;
@@ -689,7 +701,14 @@ export default {
 
     // 设置文档标题
     setDocumentTitle() {
-      document.title = "Cursor 状态监控";
+      let title = "Cursor 状态监控";
+
+      // 只有在 Electron 环境下才添加版本号
+      if (window.VERSION) {
+        title += ` v${window.VERSION}`;
+      }
+
+      document.title = title;
     },
 
     // iOS设备全屏优化
@@ -761,6 +780,25 @@ export default {
         clearTimeout(this.statusTransitionTimer);
         this.statusTransitionTimer = null;
       }
+      // 清理自动关闭定时器
+      if (this.autoCloseTimer) {
+        clearTimeout(this.autoCloseTimer);
+        this.autoCloseTimer = null;
+      }
+    },
+
+    // 启动自动关闭定时器
+    startAutoCloseTimer() {
+      // 清除之前可能存在的定时器
+      if (this.autoCloseTimer) {
+        clearTimeout(this.autoCloseTimer);
+      }
+
+      // 10秒后自动关闭
+      this.autoCloseTimer = setTimeout(() => {
+        console.log("工作完成弹框自动关闭");
+        this.hideWorkStatus();
+      }, 10000);
     },
 
     // 生成二维码
@@ -1002,9 +1040,6 @@ export default {
     // 设置文档标题
     this.setDocumentTitle();
 
-    // iOS设备全屏优化
-    // this.initIOSOptimizations();
-
     // 检测是否为移动端设备
     this.isMobile = this.isMobileDevice();
     console.log("设备检测结果:", this.isMobile ? "移动端" : "桌面端");
@@ -1041,6 +1076,11 @@ export default {
 
     if (this.statusTransitionTimer) {
       clearTimeout(this.statusTransitionTimer);
+    }
+
+    // 清理自动关闭定时器
+    if (this.autoCloseTimer) {
+      clearTimeout(this.autoCloseTimer);
     }
 
     // 清理音乐资源

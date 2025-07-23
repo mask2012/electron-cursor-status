@@ -56,10 +56,16 @@ class StatusServer {
         // 处理工作时长追踪
         this.handleWorkingStatusChange(cursor_status);
 
+        // 判断状态类型（统一在服务端判断）
+        const isWorking = cursor_status.startsWith("工作中");
+        const isCompleted = cursor_status.startsWith("工作结束");
+
         // 构造消息
         const message = {
           type: "status_update",
           status: cursor_status,
+          isWorking: isWorking,
+          isCompleted: isCompleted,
           timestamp: new Date().toISOString(),
         };
 
@@ -176,8 +182,8 @@ class StatusServer {
 
   // 处理工作状态变化，开始或停止时长追踪
   handleWorkingStatusChange(status) {
-    const isWorkingStatus = status.includes("工作中");
-    const isWorkEndStatus = status.includes("工作结束");
+    const isWorkingStatus = status.startsWith("工作中");
+    const isWorkEndStatus = status.startsWith("工作结束");
 
     if (isWorkingStatus && !this.isWorkingActive) {
       // 开始工作
