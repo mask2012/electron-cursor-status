@@ -57,8 +57,9 @@ class StatusServer {
         this.handleWorkingStatusChange(cursor_status);
 
         // 判断状态类型（统一在服务端判断）
-        const isWorking = cursor_status.startsWith("工作中");
+        // 只有以"工作结束"开头的才是结束状态，其他都认为是工作中
         const isCompleted = cursor_status.startsWith("工作结束");
+        const isWorking = !isCompleted; // 非结束状态都认为是工作中
 
         // 构造消息
         const message = {
@@ -157,6 +158,28 @@ class StatusServer {
               })
             );
           }
+          // 处理手工结束工作
+          else if (message.type === "manual_end_work") {
+            log.info(`收到手工结束工作请求:`, message);
+
+            // 模拟收到一个"工作结束"状态更新
+            const endStatus = `工作结束: ${message.reason || "手工结束"}`;
+            this.handleWorkingStatusChange(endStatus);
+
+            // 构造消息广播给所有客户端
+            const broadcastMessage = {
+              type: "status_update",
+              status: endStatus,
+              isWorking: false,
+              isCompleted: true,
+              timestamp: new Date().toISOString(),
+            };
+
+            // 推送到所有WebSocket客户端
+            this.broadcastToClients(broadcastMessage);
+
+            log.info(`手工结束工作完成，广播状态: ${endStatus}`);
+          }
         } catch (error) {
           log.error("解析客户端消息出错:", error);
         }
@@ -182,8 +205,9 @@ class StatusServer {
 
   // 处理工作状态变化，开始或停止时长追踪
   handleWorkingStatusChange(status) {
-    const isWorkingStatus = status.startsWith("工作中");
+    // 只有以"工作结束"开头的才是结束状态，其他都认为是工作中
     const isWorkEndStatus = status.startsWith("工作结束");
+    const isWorkingStatus = !isWorkEndStatus; // 非结束状态都认为是工作中
 
     if (isWorkingStatus && !this.isWorkingActive) {
       // 开始工作
@@ -207,11 +231,9 @@ class StatusServer {
           log.error("记录工作统计失败:", error);
         }
       }
-    } else if (!isWorkingStatus && !isWorkEndStatus && this.isWorkingActive) {
-      // 其他状态，停止工作
-      this.stopWorkTimer();
-      log.info("工作状态结束，停止时长追踪");
     }
+    // 移除了 else if (!isWorkingStatus && !isWorkEndStatus && this.isWorkingActive) 的逻辑
+    // 因为现在只有工作结束状态才会停止工作追踪
   }
 
   // 开始工作时长追踪

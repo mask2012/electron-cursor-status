@@ -102,6 +102,11 @@
           <!-- 关闭按钮 (仅在工作结束时显示) -->
           <div v-if="isWorkCompleted" class="close-btn" @click="hideWorkStatus" title="关闭">✕</div>
 
+          <!-- 手工结束按钮 (仅在工作中时显示) -->
+          <div v-if="isWorking" class="manual-end-btn" @click="manualEndWork" title="手工结束工作">
+            <span class="btn-text">结束工作</span>
+          </div>
+
           <!-- 计时器显示区域 -->
           <div class="timer-section" v-if="isWorking || (isWorkCompleted && finalWorkDuration)">
             <div class="timer-container">
@@ -1035,6 +1040,31 @@ export default {
       this.todayWorkCount = data.todayCount || 0;
       this.todayWorkDuration = data.todayDuration || "00:00";
     },
+
+    // 手工结束工作
+    manualEndWork() {
+      console.log("手工结束工作");
+
+      // 发送手工结束工作的消息到服务端
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+        const message = {
+          type: "manual_end_work",
+          timestamp: new Date().toISOString(),
+          reason: "手工结束",
+        };
+
+        this.ws.send(JSON.stringify(message));
+        console.log("已发送手工结束工作消息:", message);
+
+        // 可以选择立即关闭弹框，或者等待服务端响应
+        // 这里选择等待服务端响应来确保状态一致性
+      } else {
+        console.error("WebSocket连接不可用，无法发送手工结束消息");
+
+        // 如果WebSocket不可用，至少关闭本地显示
+        this.hideWorkStatus();
+      }
+    },
   },
   mounted() {
     // 设置文档标题
@@ -1474,8 +1504,8 @@ export default {
     width: 100%;
     height: 100%;
     background: rgba(0, 0, 0, 0.4);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
     z-index: 1;
     cursor: pointer;
     animation: overlayFadeIn 0.3s ease-out;
@@ -1492,13 +1522,13 @@ export default {
   background: @blur-bg;
   backdrop-filter: blur(20px);
   border-radius: 20px;
-  padding: 40px 32px;
+  padding: 20px 32px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6), 0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.15);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 24px;
+  gap: 4px;
   width: 79%;
   max-width: 800px;
   box-sizing: border-box;
@@ -1574,12 +1604,51 @@ export default {
     }
   }
 
+  // 手工结束按钮样式
+  .manual-end-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px; // 工作中时占据右上角位置
+    background: rgba(245, 101, 101, 0.15);
+    color: @error-color;
+    padding: 8px 16px;
+    border-radius: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    z-index: 10;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(245, 101, 101, 0.3);
+    box-shadow: 0 4px 12px rgba(245, 101, 101, 0.15);
+    white-space: nowrap;
+
+    &:hover {
+      background: @error-color;
+      color: white;
+      transform: translateY(-2px);
+      box-shadow: 0 6px 20px rgba(245, 101, 101, 0.4);
+      border-color: @error-color;
+    }
+
+    &:active {
+      transform: translateY(0);
+    }
+
+    .btn-text {
+      letter-spacing: 0.5px;
+    }
+  }
+
   // 计时器显示区域
   .timer-section {
     width: 100%;
     display: flex;
     justify-content: center;
-    margin-bottom: 24px;
+    margin-bottom: 12px;
   }
 
   .timer-container {
@@ -1647,7 +1716,7 @@ export default {
     width: 100%;
     display: flex;
     justify-content: center;
-    margin-bottom: 24px;
+    margin-bottom: 4px;
   }
 
   // 工作中动画
@@ -1688,16 +1757,22 @@ export default {
     }
 
     .status-detail {
-      font-size: 32px;
-      color: @text-color;
-      line-height: 1.4;
-      max-width: 600px;
-      margin: 0 auto;
+      font-size: 32px; // PC端默认大小
+      color: #fff;
       font-weight: 700;
       text-shadow: 0 2px 12px rgba(0, 0, 0, 0.5), 0 4px 20px rgba(93, 173, 226, 0.3);
-      letter-spacing: 0.5px;
       animation: textGlow 2s ease-in-out infinite alternate;
+
+      // 移动端字号优化
+      @media (max-width: 768px) {
+        font-size: 26px;
+      }
     }
+  }
+
+  // 移动端工作状态位置调整
+  @media (max-width: 768px) {
+    margin-top: 20%;
   }
 }
 
@@ -1956,8 +2031,8 @@ export default {
   }
   100% {
     opacity: 1;
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
   }
 }
 
